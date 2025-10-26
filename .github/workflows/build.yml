@@ -1,0 +1,81 @@
+name: Build llama.cpp with Vulkan on macOS x64
+
+on:
+  workflow_dispatch: # 允许手动触发
+
+jobs:
+  build-macos-vulkan:
+    runs-on: macos-15-intel
+
+    steps:
+      - name: 安装依赖
+        run: |
+          brew install cmake libomp vulkan-headers glslang molten-vk shaderc vulkan-loader vulkan-tools
+
+      - name: 验证 Vulkan 安装
+        run: |
+          vulkaninfo --summary || true
+          file /usr/local/Cellar/molten-vk/*/lib/libMoltenVK.dylib || \
+          file /opt/homebrew/Cellar/molten-vk/*/lib/libMoltenVK.dylib
+
+      - name: 检出 llama.cpp 代码
+        uses: actions/checkout@v4
+        with:
+          repository: ggml-org/llama.cpp
+          ref: b6791
+
+      - name: 配置 CMake (Vulkan 支持)
+        run: |
+          cmake -B build \
+            -DGGML_METAL=OFF \
+            -DGGML_VULKAN=ON \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: 编译
+        run: |
+          cmake --build build --config Release
+
+      - name: 显示构建信息
+        run: |
+          ls -lh build/bin/ || ls -lh build/
+          file build/bin/llama-cli || file build/llama-cli || true
+
+      - name: 打包构建产物
+        run: |
+          cd build
+          mkdir -p llama.cpp-vulkan-macos
+
+          # 复制二进制文件
+          if [ -d "bin" ]; then
+            cp -r bin llama.cpp-vulkan-macos/
+          else
+            mkdir -p llama.cpp-vulkan-macos/bin
+            cp llama-* llama.cpp-vulkan-macos/bin/ 2>/dev/null || true
+          fi
+
+          # 复制必要的库文件
+          mkdir -p llama.cpp-vulkan-macos/lib
+          cp ggml/src/*.dylib llama.cpp-vulkan-macos/lib/ 2>/dev/null || true
+          cp src/*.dylib llama.cpp-vulkan-macos/lib/ 2>/dev/null || true
+
+          # 打包
+          tar -czf llama.cpp-vulkan-macos.tar.gz llama.cpp-vulkan-macos
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: llama.cpp-vulkan-macos
+          path: build/llama.cpp-vulkan-macos.tar.gz
+          retention-days: 30
+
+      - name: 创建 Release (仅在 push 到主分支时)
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: llama.cpp Vulkan Build ${{ github.run_number }}
+          files: build/llama.cpp-vulkan-macos.tar.gz
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
