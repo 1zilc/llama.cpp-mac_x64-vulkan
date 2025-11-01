@@ -2,6 +2,11 @@ name: Build llama.cpp with Vulkan on macOS x64
 
 on:
   workflow_dispatch: # 允许手动触发
+  schedule:
+    - cron: "0 16 * * *" # UTC 时间每天 16:00，即北京时间凌晨 00:00
+
+env:
+  LLAMACPP_TAG: b6852
 
 jobs:
   build-macos-vulkan:
@@ -10,7 +15,7 @@ jobs:
     steps:
       - name: 安装依赖
         run: |
-          brew install cmake libomp vulkan-headers glslang molten-vk shaderc vulkan-loader vulkan-tools
+          brew install cmake libomp vulkan-headers glslang molten-vk shaderc vulkan-loader
 
       - name: 验证 Vulkan 安装
         run: |
@@ -18,18 +23,39 @@ jobs:
           file /usr/local/Cellar/molten-vk/*/lib/libMoltenVK.dylib || \
           file /opt/homebrew/Cellar/molten-vk/*/lib/libMoltenVK.dylib
 
+      - name: 获取最新的 llama.cpp 标签
+        run: |
+          # 获取最新的 tag
+          LATEST_TAG=$(gh release -R "ggml-org/llama.cpp" list --limit 1 --json tagName -q ".[0].tagName")
+
+          # 如果获取失败，使用默认值
+          if [ -z "$LATEST_TAG" ] || [ "$LATEST_TAG" = "null" ]; then
+            echo "无法获取最新标签"
+            exit 1
+          fi
+
+          echo "最新标签: $LATEST_TAG"
+          echo "LLAMACPP_TAG=$LATEST_TAG" >> $GITHUB_OUTPUT
+          echo "LLAMACPP_TAG=$LATEST_TAG" >> $GITHUB_ENV
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       - name: 检出 llama.cpp 代码
         uses: actions/checkout@v4
         with:
           repository: ggml-org/llama.cpp
-          ref: b6791
+          ref: ${{ env.LLAMACPP_TAG }}
 
       - name: 配置 CMake (Vulkan 支持)
         run: |
           cmake -B build \
             -DGGML_METAL=OFF \
             -DGGML_VULKAN=ON \
-            -DCMAKE_BUILD_TYPE=Release
+            -DVulkan_LIBRARY=$(brew --prefix molten-vk)/lib/libMoltenVK.dylib \
+            -DVulkan_INCLUDE_DIR=$(brew --prefix molten-vk)/include \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_RPATH="@executable_path" \
+            -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON
 
       - name: 编译
         run: |
@@ -57,24 +83,28 @@ jobs:
           mkdir -p llama.cpp-vulkan-macos/lib
           cp ggml/src/*.dylib llama.cpp-vulkan-macos/lib/ 2>/dev/null || true
           cp src/*.dylib llama.cpp-vulkan-macos/lib/ 2>/dev/null || true
+          cp /usr/local/opt/molten-vk/lib/libMoltenVK.dylib llama.cpp-vulkan-macos/lib/ 2>/dev/null || true
+
+          install_name_tool -change /usr/local/opt/molten-vk/lib/libMoltenVK.dylib \
+          @executable_path/../lib/libMoltenVK.dylib llama.cpp-vulkan-macos/bin/libggml-vulkan.dylib
 
           # 打包
-          tar -czf llama.cpp-vulkan-macos.tar.gz llama.cpp-vulkan-macos
+          tar -czf llama-${{ env.LLAMACPP_TAG }}-bin-macos-x64.tar.gz llama.cpp-vulkan-macos
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
           name: llama.cpp-vulkan-macos
-          path: build/llama.cpp-vulkan-macos.tar.gz
+          path: build/llama-${{ env.LLAMACPP_TAG }}-bin-macos-x64.tar.gz
           retention-days: 30
 
-      - name: 创建 Release (仅在 push 到主分支时)
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+      - name: 创建 Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: build-${{ github.run_number }}
-          name: llama.cpp Vulkan Build ${{ github.run_number }}
-          files: build/llama.cpp-vulkan-macos.tar.gz
+          tag_name: ${{ env.LLAMACPP_TAG }}
+          name: ${{ env.LLAMACPP_TAG }}
+          body: https://github.com/ggml-org/llama.cpp/releases/tag/${{ env.LLAMACPP_TAG }}
+          files: build/llama-${{ env.LLAMACPP_TAG }}-bin-macos-x64.tar.gz
           draft: false
           prerelease: false
         env:
