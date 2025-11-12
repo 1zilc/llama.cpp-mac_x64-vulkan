@@ -15,7 +15,7 @@ jobs:
     steps:
       - name: 安装依赖
         run: |
-          brew install cmake libomp vulkan-headers glslang molten-vk shaderc vulkan-loader
+          brew install cmake libomp vulkan-headers glslang molten-vk shaderc vulkan-tools
 
       - name: 验证 Vulkan 安装
         run: |
@@ -56,7 +56,7 @@ jobs:
 
       - name: 编译
         run: |
-          cmake --build build --config Release
+          cmake --build build --config Release -j$(sysctl -n hw.ncpu)
 
       - name: 显示构建信息
         run: |
