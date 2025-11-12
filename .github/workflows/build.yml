@@ -15,7 +15,7 @@ jobs:
     steps:
       - name: 安装依赖
         run: |
-          brew install ccache cmake libomp vulkan-headers glslang molten-vk shaderc vulkan-tools
+          brew install cmake libomp vulkan-headers glslang molten-vk shaderc vulkan-tools
 
       - name: 验证 Vulkan 安装
         run: |
@@ -49,7 +49,7 @@ jobs:
           key: ${{ runner.os }}-ccache-${{ env.LLAMACPP_TAG }}
           restore-keys: |
             ${{ runner.os }}-ccache-latest
-          max-size: 1024M
+          create-symlink: true
 
       - name: 配置 CMake (Vulkan 支持)
         run: |
@@ -61,8 +61,10 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_RPATH="@executable_path" \
             -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
+            -DGGML_RPC=ON \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.3 \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
 
       - name: 编译
         run: |
