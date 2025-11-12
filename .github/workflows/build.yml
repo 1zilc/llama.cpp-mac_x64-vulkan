@@ -13,9 +13,15 @@ jobs:
     runs-on: macos-15-intel
 
     steps:
+      - name: ccache
+        uses: ggml-org/ccache-action@v1.2.16
+        with:
+          key: macOS-latest-cmake-x64
+          evict-old-files: 1d
+
       - name: 安装依赖
         run: |
-          brew install cmake libomp vulkan-headers glslang molten-vk shaderc vulkan-tools
+          brew install libomp vulkan-headers glslang molten-vk shaderc vulkan-tools
 
       - name: 验证 Vulkan 安装
         run: |
@@ -43,14 +49,6 @@ jobs:
           repository: ggml-org/llama.cpp
           ref: ${{ env.LLAMACPP_TAG }}
 
-      - name: 设置 ccache
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          key: ${{ runner.os }}-ccache-${{ env.LLAMACPP_TAG }}
-          restore-keys: |
-            ${{ runner.os }}-ccache-latest
-          create-symlink: true
-
       - name: 配置 CMake (Vulkan 支持)
         run: |
           cmake -B build \
@@ -58,50 +56,35 @@ jobs:
             -DGGML_VULKAN=ON \
             -DVulkan_LIBRARY=$(brew --prefix molten-vk)/lib/libMoltenVK.dylib \
             -DVulkan_INCLUDE_DIR=$(brew --prefix molten-vk)/include \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_RPATH="@executable_path" \
+            -DCMAKE_INSTALL_RPATH="@loader_path" \
             -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
             -DGGML_RPC=ON \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.3 \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.3
 
       - name: 编译
         run: |
-          cmake --build build --config Release -j$(sysctl -n hw.ncpu)
+          cmake --build build --config Release -j$(sysctl -n hw.logicalcpu)
 
       - name: 显示构建信息
         run: |
-          ls -lh build/bin/ || ls -lh build/
-          file build/bin/llama-cli || file build/llama-cli || true
+          ls -lh build/bin/ || true
 
       - name: 打包构建产物
         run: |
-          cd build
-          mkdir -p llama.cpp-vulkan-macos
-
-          # 复制二进制文件
-          if [ -d "bin" ]; then
-            cp -r bin llama.cpp-vulkan-macos/
-          else
-            mkdir -p llama.cpp-vulkan-macos/bin
-            cp llama-* llama.cpp-vulkan-macos/bin/ 2>/dev/null || true
-          fi
-
           # 复制必要的库文件
-          cp $(brew --prefix molten-vk)/lib/libMoltenVK.dylib llama.cpp-vulkan-macos/bin/ 2>/dev/null || true
+          cp $(brew --prefix molten-vk)/lib/libMoltenVK.dylib build/bin/ 2>/dev/null || true
 
           install_name_tool -change /usr/local/opt/molten-vk/lib/libMoltenVK.dylib \
-          ./libMoltenVK.dylib llama.cpp-vulkan-macos/bin/libggml-vulkan.dylib
+          ./libMoltenVK.dylib build/bin/libggml-vulkan.dylib
 
           # 打包
-          tar -czf llama-${{ env.LLAMACPP_TAG }}-bin-macos-x64.tar.gz llama.cpp-vulkan-macos
+          zip -r llama-${{ env.LLAMACPP_TAG }}-bin-macos-x64-vulkan.zip ./build/bin/*
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: llama.cpp-vulkan-macos
-          path: build/llama-${{ env.LLAMACPP_TAG }}-bin-macos-x64.tar.gz
+          name: llama-bin-macos-x64-vulkan.zip
+          path: llama-${{ env.LLAMACPP_TAG }}-bin-macos-x64-vulkan.zip
           retention-days: 30
 
       - name: 创建 Release
@@ -110,7 +93,7 @@ jobs:
           tag_name: ${{ env.LLAMACPP_TAG }}
           name: ${{ env.LLAMACPP_TAG }}
           body: https://github.com/ggml-org/llama.cpp/releases/tag/${{ env.LLAMACPP_TAG }}
-          files: build/llama-${{ env.LLAMACPP_TAG }}-bin-macos-x64.tar.gz
+          files: llama-${{ env.LLAMACPP_TAG }}-bin-macos-x64-vulkan.zip
           draft: false
           prerelease: false
         env:
