@@ -15,7 +15,7 @@ jobs:
     steps:
       - name: 安装依赖
         run: |
-          brew install cmake libomp vulkan-headers glslang molten-vk shaderc vulkan-tools
+          brew install ccache cmake libomp vulkan-headers glslang molten-vk shaderc vulkan-tools
 
       - name: 验证 Vulkan 安装
         run: |
@@ -43,6 +43,14 @@ jobs:
           repository: ggml-org/llama.cpp
           ref: ${{ env.LLAMACPP_TAG }}
 
+      - name: 设置 ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ runner.os }}-ccache-${{ env.LLAMACPP_TAG }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-latest
+          max-size: 1024M
+
       - name: 配置 CMake (Vulkan 支持)
         run: |
           cmake -B build \
@@ -52,7 +60,9 @@ jobs:
             -DVulkan_INCLUDE_DIR=$(brew --prefix molten-vk)/include \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_RPATH="@executable_path" \
-            -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON
+            -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: 编译
         run: |
