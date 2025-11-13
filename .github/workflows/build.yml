@@ -13,12 +13,6 @@ jobs:
     runs-on: macos-15-intel
 
     steps:
-      - name: ccache
-        uses: ggml-org/ccache-action@v1.2.16
-        with:
-          key: macOS-latest-cmake-x64
-          evict-old-files: 1d
-
       - name: Install dependencies
         run: |
           brew install libomp vulkan-headers glslang molten-vk shaderc vulkan-tools
@@ -49,6 +43,15 @@ jobs:
           repository: ggml-org/llama.cpp
           ref: ${{ env.LLAMACPP_TAG }}
 
+      - name: Setting ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ runner.os }}-ccache-${{ env.LLAMACPP_TAG }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-
+          max-size: 1024M
+          create-symlink: true
+
       - name: Configure CMake (Vulkan support)
         run: |
           cmake -B build \
@@ -59,7 +62,9 @@ jobs:
             -DCMAKE_INSTALL_RPATH="@loader_path" \
             -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
             -DGGML_RPC=ON \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.3
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.3 \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build
         run: |
