@@ -55,6 +55,7 @@ jobs:
           cmake -B build \
             -DGGML_METAL=OFF \
             -DGGML_VULKAN=ON \
+            -DLLAMA_CURL=1 \
             -DVulkan_LIBRARY=$(brew --prefix molten-vk)/lib/libMoltenVK.dylib \
             -DVulkan_INCLUDE_DIR=$(brew --prefix molten-vk)/include \
             -DCMAKE_INSTALL_RPATH="@loader_path" \
