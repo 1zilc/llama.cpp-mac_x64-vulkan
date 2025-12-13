@@ -6,7 +6,7 @@ on:
     - cron: "0 16 * * *" # UTC 16:00 daily, which is 00:00 Beijing time
 
 env:
-  LLAMACPP_TAG: b7017
+  LLAMACPP_TAG: b7379
 
 jobs:
   build-macos-vulkan:
@@ -43,13 +43,6 @@ jobs:
           repository: ggml-org/llama.cpp
           ref: ${{ env.LLAMACPP_TAG }}
 
-      - name: Setting ccache
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          key: ${{ runner.os }}-ccache
-          max-size: 1024M
-          create-symlink: true
-
       - name: Configure CMake (Vulkan support)
         run: |
           cmake -B build \
@@ -61,9 +54,7 @@ jobs:
             -DCMAKE_INSTALL_RPATH="@loader_path" \
             -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
             -DGGML_RPC=ON \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.3 \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.3
 
       - name: Build
         run: |
