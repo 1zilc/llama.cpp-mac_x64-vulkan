@@ -6,7 +6,7 @@ on:
     - cron: "0 4 * * *" # UTC 04:00 daily, which is 12:00 Beijing time
 
 env:
-  LLAMACPP_TAG: b7379
+  LLAMACPP_TAG: b7902
   MOLTEN_VK_TAG: v1.4.1
 
 jobs:
