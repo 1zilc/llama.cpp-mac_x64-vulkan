@@ -3,7 +3,7 @@ name: Build llama.cpp with Vulkan on macOS x64
 on:
   workflow_dispatch: # Allow manual trigger
   schedule:
-    - cron: "0 4 * * *" # UTC 04:00 daily, which is 12:00 Beijing time
+    - cron: "0 16 * * *" # UTC 16:00 daily, which is 12:00 Beijing time
 
 env:
   LLAMACPP_TAG: b7902
@@ -100,6 +100,6 @@ jobs:
           body: https://github.com/ggml-org/llama.cpp/releases/tag/${{ env.LLAMACPP_TAG }} with molten-vk ${{ env.MOLTEN_VK_TAG }}
           files: llama-${{ env.LLAMACPP_TAG }}-bin-macos-x64-vulkan.zip
           draft: false
-          prerelease: true
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
