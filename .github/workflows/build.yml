@@ -6,9 +6,13 @@ on:
     - cron: "0 16 * * *" # UTC 16:00 daily, which is 00:00 Beijing time
 
 env:
-  LLAMACPP_TAG: b8201
-  MOLTEN_VK_TAG: v1.4.1
+  # Used only if fetching the latest llama.cpp release tag fails
+  LLAMACPP_TAG: b12005
+  MOLTEN_VK_TAG: v1.4.2
   MOLTEN_VK_INFO: ""
+
+permissions:
+  contents: write
 
 jobs:
   build-macos-vulkan:
@@ -39,16 +43,16 @@ jobs:
       - name: Get latest llama.cpp tag
         run: |
           # Get the latest tag
-          LATEST_TAG=$(gh release -R "ggml-org/llama.cpp" list --limit 1 --json tagName -q ".[0].tagName")
+          LATEST_TAG=$(gh release -R "ggml-org/llama.cpp" list --limit 1 --json tagName -q ".[0].tagName" || true)
 
           # If fetching fails, use default
           if [ -z "$LATEST_TAG" ] || [ "$LATEST_TAG" = "null" ]; then
-            echo "Failed to fetch latest tag, using ${env.LLAMACPP_TAG}"
+            echo "Failed to fetch latest tag, using $LLAMACPP_TAG"
+            LATEST_TAG="$LLAMACPP_TAG"
           fi
 
           echo "Tag: $LATEST_TAG"
-          echo "LLAMACPP_TAG=$LATEST_TAG" >> $GITHUB_OUTPUT
-          echo "LLAMACPP_TAG=$LATEST_TAG" >> $GITHUB_ENV
+          echo "LLAMACPP_TAG=$LATEST_TAG" >> "$GITHUB_ENV"
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -63,7 +67,7 @@ jobs:
           cmake -B build \
             -DGGML_METAL=OFF \
             -DGGML_VULKAN=ON \
-            -DLLAMA_CURL=1 \
+            -DLLAMA_BUILD_BORINGSSL=ON \
             -DVulkan_LIBRARY=$(brew --prefix molten-vk)/lib/libMoltenVK.dylib \
             -DVulkan_INCLUDE_DIR=$(brew --prefix molten-vk)/include \
             -DCMAKE_INSTALL_RPATH="@loader_path" \
@@ -82,13 +86,27 @@ jobs:
       - name: Package build artifacts
         run: |
           # Copy required library files
-          cp $(brew --prefix molten-vk)/lib/libMoltenVK.dylib build/bin/ 2>/dev/null || true
+          MOLTEN_VK_LIB="$(brew --prefix molten-vk)/lib/libMoltenVK.dylib"
+          cp "$MOLTEN_VK_LIB" build/bin/
 
-          install_name_tool -change /usr/local/opt/molten-vk/lib/libMoltenVK.dylib \
-          ./libMoltenVK.dylib build/bin/libggml-vulkan.dylib
+          # The Homebrew dylib records an absolute install name. Rewrite it so
+          # the bundled copy is resolved relative to libggml-vulkan.dylib.
+          for f in build/bin/*; do
+            [ -f "$f" ] || continue
+            case "$f" in
+              */libMoltenVK.dylib) continue ;;
+            esac
+            for dep in $(otool -L "$f" 2>/dev/null | tail -n +2 | awk '{print $1}'); do
+              case "$dep" in
+                */libMoltenVK.dylib)
+                  install_name_tool -change "$dep" @loader_path/libMoltenVK.dylib "$f"
+                  ;;
+              esac
+            done
+          done
 
-          # Create zip archive
-          zip -r llama-${{ env.LLAMACPP_TAG }}-bin-macos-x64-vulkan.zip ./build/bin/*
+          # -y keeps the dylib symlinks instead of adding three full copies of each library
+          zip -r -y llama-${{ env.LLAMACPP_TAG }}-bin-macos-x64-vulkan.zip ./build/bin/*
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
